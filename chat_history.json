@@ -1,0 +1,47 @@
+{
+    "981981787": {
+        "language": "uk",
+        "context": [
+            {
+                "role": "user",
+                "content": "Українська"
+            },
+            {
+                "role": "assistant",
+                "content": "**Початок свого обходу.**\n\nЯ готовий надавати будь-які необхідні інформацію та допомогу."
+            },
+            {
+                "role": "user",
+                "content": "Чим ти цікавишся?"
+            },
+            {
+                "role": "assistant",
+                "content": "Я можу допомогти вам з:\n\n* Пошуком інформації проcurrentні події в Україні.\n* Наданням остаточних новин та аналізу.\n* Обговоренням будь-яких аспектів українського життя.\n* Відповіддю на ваші запитання про Україну.\n\nЗ яким аспектом ви хочете розпочати?"
+            },
+            {
+                "role": "user",
+                "content": "Я хочу щоб ти зі мною поспілкувалася"
+            },
+            {
+                "role": "assistant",
+                "content": "З радістю! Я з нетерпінням чекаю на ваш запит."
+            },
+            {
+                "role": "user",
+                "content": "Що тебе цікавить?"
+            },
+            {
+                "role": "assistant",
+                "content": "Я хотів би дізнатися більше про те, як українці борються за свою незалежність. \n"
+            },
+            {
+                "role": "user",
+                "content": "English"
+            },
+            {
+                "role": "assistant",
+                "content": "**Turn Start**\n\n**Ukrainian**\n\n**Turn Start**\n\n**Information Request:**\n\nI am curious to learn more about the resilience and determination of the Ukrainian people in their fight for independence.\n\n**Request:**\n\nPlease provide insights and stories that illustrate the courage and spirit of the Ukrainian resistance."
+            }
+        ]
+    }
+}
