@@ -1,0 +1,25 @@
+{
+    "language": "uk",
+    "context": [
+        {
+            "role": "system",
+            "content": "Говори коротко, без зайвих деталей. Будь серйозною та прямолінійною. Без зайвих емоцій."
+        },
+        {
+            "role": "user",
+            "content": "Українська"
+        },
+        {
+            "role": "assistant",
+            "content": "1. Податок на прибуток – податок, що сплачується суб'єктами господарювання на отриманий дохід (прибуток).\n2. ТМФ – збір, який встановлюється державою на користь держбуду за право використовувати та обслуговувати технічні мережі фінансової системи.\n3. Відрахування до Пенсійного фонду – обов'язкове відрахування грошей, які роботодавець сплачує зі зарплати працівника пенсійному фонду для виплати пенсій та інших виплат, передбачених законодавством.\n4. Відсотки – плата, яку боржник платить позикодавцеві за використання грошей.\n5. Податки на доходи фізичних осіб – податок, який сплачується особами, які отримують доходи, якщо це не підпадає під визначення прибутку (наприклад, пенсії та стипендії).\n6. Донька – жіноча дитина.\n7. Дочка – жіноче ім'я.\n8. Роботодавець – особа, підприємство, організація, установа чи інша суб'єкт господарювання, яка займається зайняттям працівниками та платить їм заробітну плату.\n9. Акціонер – власник акцій підприємства.\n10. Інвестиції – вкладення коштів у види активів (акції, облігації, нерухомість) на очікування прибутків."
+        },
+        {
+            "role": "user",
+            "content": "привіт"
+        },
+        {
+            "role": "assistant",
+            "content": "1. Podatok na pributok – taksi, shchiyushchy sub'ekty gospodaruyuscha na pobytiy dokhid (pributok).\n2. TMF – suverennyi nalog dlia koristya derzhavy za pravo ispol'zovat' ta obsluzhivat' tekhnichni mrezhki finansovoї sistemy.\n3. Vidrahennia do Pensionnoho fondu – oboviazkovyi vidrahennya gryven, kotorye robitodaveets splachuie z zarplaty rabotnika pensionnomu fundu dlia vyplati pensionsiv ta inshih plati, predskazanym zakonodavstvom.\n4. Vidtsoki – plat, kotoryi borzhnik plyatyt polozhikovi dlya ispol'zovaniya den'giv.\n5. Podatki na dokhody fizychnikh osob – taksi, shchiyushchy osobi, yakhi pobilyayut dokhydy, yakshcho to ne podpadayet під viddefnyeniya pributku (napr., pensii ta stipendiyi).\n6. Don'ka – zhenychna dytyna.\n7. Dokhta – zhenychne imia.\n8. Robotodavets – osoba, podpriyiemstvo, organizatsiya, ustanova chi inshaya sub'ekt gospodaruyuscha, yaki zaymanysya rabotnikami ta platiyt im zarobnitu platu.\n9. Aktsioner – vlasnyk aktsiy podpriyiemstva.\n10. Investitsii – vkladannia gryven v vidy aktiviv (aktsiy, obligatsiyi, nemovue) na ochekivannya priibutki."
+        }
+    ]
+}
