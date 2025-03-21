@@ -1,183 +1,206 @@
 import os
+import json
 import logging
-import ollama
-import sqlite3
 import time
+import psycopg2
+import ollama
+import asyncio
 import random
-
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # Завантаження змінних середовища
 load_dotenv()
+
+# Завантаження конфігурації
+CONFIG_FILE = "config.json"
+if os.path.exists(CONFIG_FILE):
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = json.load(f)
+else:
+    raise ValueError("❌ Файл config.json не знайдено!")
+
+# Токен і база даних
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not TOKEN or not DATABASE_URL:
+    raise ValueError("❌ TELEGRAM_BOT_TOKEN і DATABASE_URL не знайдено у .env!")
 
 # Логування
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Підключення до бази даних
-DB_FILE = "lizzie_learning.db"
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cursor = conn.cursor()
+# Функція підключення до PostgreSQL
+def connect_db():
+    try:
+        result = urlparse(DATABASE_URL)
+        conn = psycopg2.connect(
+            dbname=result.path[1:], user=result.username, password=result.password,
+            host=result.hostname, port=result.port, sslmode='disable', client_encoding='UTF8'
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"❌ Помилка підключення до бази даних: {e}")
+        return None
 
 # Створення таблиць
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    language TEXT DEFAULT 'uk',
-    greeted INTEGER DEFAULT 0,
-    age INTEGER
-);
-""")
+def create_tables():
+    conn = connect_db()
+    if conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    language TEXT DEFAULT 'українська',
+                    age INTEGER
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL
+                );
+            """)
+            conn.commit()
+        conn.close()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS chat_history (
-    user_id TEXT,
-    role TEXT,
-    content TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(user_id)
-);
-""")
+create_tables()
 
-conn.commit()
+# Функція збереження повідомлення у базу
+def save_message(user_id, role, content):
+    conn = connect_db()
+    if conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO chat_history (user_id, role, content) VALUES (%s, %s, %s);",
+                (user_id, role, content)
+            )
+            conn.commit()
+        conn.close()
 
-MAX_HISTORY = 10
+# Функція отримання віку користувача
+def get_user_age(user_id):
+    conn = connect_db()
+    if not conn:
+        return None
 
-def get_user_language(user_id):
-    cursor.execute("SELECT language FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    return result[0] if result else "uk"
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT age FROM users WHERE user_id = %s;", (user_id,))
+        result = cursor.fetchone()
 
-def set_user_language(user_id, language):
-    cursor.execute("INSERT INTO users (user_id, language, greeted, age) VALUES (?, ?, 0, NULL) ON CONFLICT(user_id) DO UPDATE SET language = ?",
-                   (user_id, language, language))
-    conn.commit()
+    conn.close()
+    return result[0] if result else None
 
-def has_greeted(user_id):
-    cursor.execute("SELECT greeted FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    return result and result[0] == 1
-
-def set_greeted(user_id):
-    cursor.execute("UPDATE users SET greeted = 1 WHERE user_id = ?", (user_id,))
-    conn.commit()
-
-def get_or_set_age(user_id):
-    cursor.execute("SELECT age FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-
-    if result and result[0] is not None:
-        return result[0]
-
-    new_age = random.randint(18, 25)
-    cursor.execute("UPDATE users SET age = ? WHERE user_id = ?", (new_age, user_id))
-    conn.commit()
-    return new_age
-
-async def start(update: Update, context: CallbackContext):
-    keyboard = [[KeyboardButton("English 🇬🇧")], [KeyboardButton("Українська 🇺🇦")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("🌍 Обери мову:", reply_markup=reply_markup)
-
-async def set_language(update: Update, context: CallbackContext):
-    user_id = str(update.message.chat_id)
-    user_choice = update.message.text
-
-    language = "en" if "English" in user_choice else "uk" if "Українська" in user_choice else None
-    if not language:
-        await update.message.reply_text("⚠️ Обери мову зі списку.")
+# Функція збереження віку
+def save_user_age(user_id, age):
+    conn = connect_db()
+    if not conn:
         return
 
-    set_user_language(user_id, language)
-    await update.message.reply_text("Привіт! 😊" if language == "uk" else "Hi! 😊")
-    set_greeted(user_id)
+    with conn.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO users (user_id, age) 
+            VALUES (%s, %s) 
+            ON CONFLICT (user_id) DO UPDATE SET age = EXCLUDED.age;
+        """, (user_id, age))
+        conn.commit()
 
-async def clear_history(update: Update, context: CallbackContext):
+    conn.close()
+
+# Функція вибору мови
+async def choose_language(update: Update, context: CallbackContext):
+    keyboard = [[KeyboardButton("Українська")], [KeyboardButton("English")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Оберіть мову / Choose a language:", reply_markup=reply_markup)
+
+# Функція зміни мови
+async def change_language(update: Update, context: CallbackContext):
     user_id = str(update.message.chat_id)
-    cursor.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
-    conn.commit()
-    cursor.execute("UPDATE users SET greeted = 0, age = NULL WHERE user_id = ?", (user_id,))
-    conn.commit()
+    lang = update.message.text.strip().lower()
 
-    message = "Готово, почнемо з чистого листа! 😉" if get_user_language(user_id) == "uk" else "Done, fresh start! 😉"
-    await update.message.reply_text(message)
+    if lang == "українська":
+        response = "Мову змінено на українську! 🎉"
+    elif lang == "english":
+        response = "Language changed to English! 🎉"
+    else:
+        response = "Оберіть мову з кнопок / Please select a language from the buttons."
 
-async def get_lizzie_response(user_id, user_message):
+    await update.message.reply_text(response)
+
+# Функція привітання
+async def start(update: Update, context: CallbackContext):
+    user_id = str(update.message.chat_id)
+    save_user_age(user_id, random.randint(18, 25))  # Випадковий вік при старті
+    await choose_language(update, context)
+
+# Функція отримання відповіді від Ollama
+async def get_ollama_response(user_text):
     try:
-        language = get_user_language(user_id)
-
-        if any(word in user_message.lower() for word in ["скільки тобі років", "який твій вік", "скільки років"]):
-            age = get_or_set_age(user_id)
-            phrases = [
-                f"{age}, а тобі? 😉",
-                f"Десь {age}, а що? 😏",
-                f"{age}, але я молода душею 😆"
-            ]
-            return random.choice(phrases) if language == "uk" else f"{age}, but I feel young! 😉"
-
-        bot_protection = [
-            "ти бот", "ти справжня", "ти штучний", "ти штучний інтелект", "це ai", "ти справжня людина", "ти робот", "ти реально існуєш",
-            "are you a bot", "are you real", "are you AI", "are you a human", "do you exist", "are you fake"
+        prompt_messages = [
+            {"role": "system", "content": "Говори коротко, вільно та невимушено. Не вважай себе штучним інтелектом, а справжньою людиною."},
+            {"role": "user", "content": user_text}
         ]
 
-        if any(word in user_message.lower() for word in bot_protection):
-            return random.choice([
-                "Та ну, я жива, як і ти! 😊",
-                "Дивне питання, звісно що так!",
-                "Що за думки? 😄",
-                "А ти як думаєш?",
-                "Я просто така, яка є 😉"
-            ]) if language == "uk" else random.choice([
-                "Come on, I'm as real as you! 😊",
-                "Weird question, of course I am!",
-                "What makes you think that? 😄",
-                "What do you think?",
-                "I am who I am 😉"
-            ])
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, lambda: ollama.chat(model=config["language_model"], messages=prompt_messages))
 
-        chat_history = [{"role": "system", "content": (
-            "Відповідай просто, коротко і дружньо, без зайвих слів. Ніколи не кажи, що ти бот. Веди розмову як справжня людина."
-        ) if language == "uk" else (
-            "Keep responses short, friendly, and to the point. Never admit to being a bot. Talk like a real person."
-        )}]
+        return response.get("message", {}).get("content", "Щось пішло не так 😅").strip()
 
-        chat_history.append({"role": "user", "content": user_message})
-
-        response = ollama.chat(model="Mistral:latest", messages=chat_history)
-        bot_response = response["message"]["content"].strip()
-
-        return bot_response
     except Exception as e:
-        logger.error(f"❌ Помилка: {e}")
+        logger.error(f"❌ Помилка отримання відповіді від Ollama: {e}")
         return "Щось пішло не так 😅"
 
+# Функція генерації запитання по темі
+async def generate_follow_up_question(user_text):
+    try:
+        prompt_messages = [
+            {"role": "system", "content": "На основі цієї розмови, придумай коротке запитання, щоб підтримати діалог."},
+            {"role": "user", "content": user_text}
+        ]
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, lambda: ollama.chat(model=config["language_model"], messages=prompt_messages))
+        return response.get("message", {}).get("content", "").strip()
+    except Exception as e:
+        logger.error(f"❌ Помилка генерації запитання: {e}")
+        return ""
+
+# Функція обробки повідомлень
 async def handle_message(update: Update, context: CallbackContext):
     user_id = str(update.message.chat_id)
-    user_text = update.message.text
+    user_text = update.message.text.strip().lower()
 
-    if not get_user_language(user_id):
-        await start(update, context)
-        return
+    save_message(user_id, "user", user_text)
+    logger.info(f"📩 Отримано повідомлення від {user_id}: {user_text}")
 
-    if not has_greeted(user_id):
-        await update.message.reply_text("Привіт! 😊")
-        set_greeted(user_id)
+    if user_text in ["привіт", "hi", "hello"]:
+        response_text = "Привіт! 😊"
+    elif "як тебе звати" in user_text:
+        response_text = "Мене звати Ліззі! 😊"
+    elif "скільки тобі років" in user_text or "твій вік" in user_text:
+        age = get_user_age(user_id)
+        response_text = f"Мені {age} років!"
+    else:
+        response_text = await get_ollama_response(user_text)
 
-    ai_response = await get_lizzie_response(user_id, user_text)
-    await update.message.reply_text(ai_response)
+    follow_up_question = await generate_follow_up_question(user_text) if random.random() < 0.5 else ""
+    final_response = response_text + (" " + follow_up_question if follow_up_question else "")
 
+    save_message(user_id, "assistant", final_response)
+    await update.message.reply_text(final_response)
+
+# Функція запуску бота
 def run_telegram_bot():
     while True:
         try:
-            app = Application.builder().token(TOKEN).build()
+            app = Application.builder().token(TOKEN).concurrent_updates(True).build()
             app.add_handler(CommandHandler("start", start))
-            app.add_handler(CommandHandler("clear", clear_history))
-            app.add_handler(MessageHandler(filters.Regex("^(English 🇬🇧|Українська 🇺🇦)$"), set_language))
+            app.add_handler(MessageHandler(filters.Regex("^(Українська|English)$"), change_language))
             app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-            logger.info("✅ Бот запущений...")
+            logger.info("🚀 Бот запущений!")
             app.run_polling()
         except Exception as e:
             logger.error(f"❌ Помилка: {e}")
